@@ -9,7 +9,7 @@ repository = "https://github.com/cehteh/bintest.git"
 keywords = ["testing", "cargo"]
 
 [dependencies]
-cargo_metadata = ">= 0.13, <=0.16"
+cargo_metadata = ">= 0.13, <=0.19"
 
 [badges]
 maintenance = { status = "actively-developed" }
