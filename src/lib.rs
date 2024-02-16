@@ -2,6 +2,9 @@
 //!
 //! # Example
 //!
+//! In simple cases you can just call `BinTest::new()` to build all executables in the current
+//! crate and get a `BinTest` instance to work with.
+//!
 //! ```rust
 //! #[test]
 //! fn test() {
@@ -28,9 +31,9 @@
 //! The 'testcall' crate uses this to build tests and assertions on top of the commands
 //! created by bintest. The 'testpath' crate lets you run test in specially created temporary
 //! directories to provide an filesystem environment for tests.
-use std::collections::BTreeMap;
 use std::env::var_os as env;
 use std::ffi::OsString;
+use std::{collections::BTreeMap, sync::OnceLock};
 
 pub use std::process::{Command, Stdio};
 
@@ -39,6 +42,7 @@ use cargo_metadata::Message;
 
 /// Allows configuration of a workspace to find an executable in
 #[must_use]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BinTestBuilder {
     build_workspace: bool,
     specific_executable: Option<&'static str>,
@@ -46,8 +50,10 @@ pub struct BinTestBuilder {
 }
 
 /// Access to binaries build by 'cargo build'
+#[derive(Clone, Debug)]
 pub struct BinTest {
-    build_executables: BTreeMap<String, Utf8PathBuf>,
+    configured_with: &'static BinTestBuilder,
+    build_executables: &'static BTreeMap<String, Utf8PathBuf>,
 }
 
 //PLANNED: needs some better way to figure out what profile is active
@@ -91,7 +97,7 @@ impl BinTestBuilder {
     /// Constructs the `BinTest`, running `cargo build` with the configured options
     #[must_use]
     pub fn build(self) -> BinTest {
-        BinTest::new_with_builder(self)
+        BinTest::new_with_builder(&self)
     }
 }
 
@@ -105,15 +111,42 @@ impl BinTest {
     ///
     /// let executables: BinTest = BinTest::with().quiet(true).build();
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// All tests must run with the same configuration, this can be either achieved by calling
+    /// `BinTest::with()` always with the same configuration or by providing a function that
+    /// always returns the same builder:
+    ///
+    /// ```
+    /// use bintest::BinTest;
+    ///
+    /// #[cfg(test)]
+    /// const fn bintest_config() -> &'static BinTestBuilder {
+    ///     // The Builder can be all const constructed
+    ///     static BINTEST_CONFIG: BinTestBuilder = BinTest::with().quiet(true);
+    ///     &BINTEST_CONFIG
+    /// }
+    ///
+    /// #[test]
+    /// fn example() {
+    ///     let bintest: BinTest = bintest_config().build();
+    /// }
+    /// ```
     pub const fn with() -> BinTestBuilder {
         BinTestBuilder::new()
     }
 
     /// Runs 'cargo build' and register all build executables.
     /// Executables are identified by their name, without path and filename extension.
+    ///
+    /// # Panics
+    ///
+    /// All tests must run with the same configuration, when using only `BinTest::new()` this
+    /// is infallible. Mixing this with differing configs from `BinTest::with()` will panic.
     #[must_use]
     pub fn new() -> BinTest {
-        Self::new_with_builder(BinTestBuilder::new())
+        Self::new_with_builder(&BinTestBuilder::new())
     }
 
     /// Gives an `(name, path)` iterator over all executables found
@@ -131,46 +164,62 @@ impl BinTest {
         )
     }
 
-    fn new_with_builder(builder: BinTestBuilder) -> Self {
-        let mut cargo_build = Command::new(env("CARGO").unwrap_or_else(|| OsString::from("cargo")));
+    fn new_with_builder(builder: &BinTestBuilder) -> Self {
+        static SINGLETON: OnceLock<BinTest> = OnceLock::new();
 
-        cargo_build
-            .args(["build", "--message-format", "json"])
-            .stdout(Stdio::piped());
+        let singleton = SINGLETON.get_or_init(|| {
+            let mut cargo_build =
+                Command::new(env("CARGO").unwrap_or_else(|| OsString::from("cargo")));
 
-        if RELEASE_BUILD {
-            cargo_build.arg("--release");
-        }
+            cargo_build
+                .args(["build", "--message-format", "json"])
+                .stdout(Stdio::piped());
 
-        if builder.build_workspace {
-            cargo_build.arg("--workspace");
-        }
+            if RELEASE_BUILD {
+                cargo_build.arg("--release");
+            }
 
-        if let Some(executable) = builder.specific_executable {
-            cargo_build.args(["--bin", &executable]);
-        }
+            if builder.build_workspace {
+                cargo_build.arg("--workspace");
+            }
 
-        if builder.quiet {
-            cargo_build.arg("--quiet");
-        }
+            if let Some(executable) = builder.specific_executable {
+                cargo_build.args(["--bin", &executable]);
+            }
 
-        let mut cargo_result = cargo_build.spawn().expect("'cargo build' success");
+            if builder.quiet {
+                cargo_build.arg("--quiet");
+            }
 
-        let mut build_executables = BTreeMap::new();
+            let mut cargo_result = cargo_build.spawn().expect("'cargo build' success");
 
-        let reader = std::io::BufReader::new(cargo_result.stdout.take().unwrap());
-        for message in cargo_metadata::Message::parse_stream(reader) {
-            if let Message::CompilerArtifact(artifact) = message.unwrap() {
-                if let Some(executable) = artifact.executable {
-                    build_executables.insert(
-                        String::from(executable.file_stem().expect("filename")),
-                        executable.to_path_buf(),
-                    );
+            let btree_map = Box::<BTreeMap<String, Utf8PathBuf>>::default();
+            let mut build_executables = btree_map;
+
+            let reader = std::io::BufReader::new(cargo_result.stdout.take().unwrap());
+            for message in cargo_metadata::Message::parse_stream(reader) {
+                if let Message::CompilerArtifact(artifact) = message.unwrap() {
+                    if let Some(executable) = artifact.executable {
+                        build_executables.insert(
+                            String::from(executable.file_stem().expect("filename")),
+                            executable.to_path_buf(),
+                        );
+                    }
                 }
             }
-        }
 
-        BinTest { build_executables }
+            BinTest {
+                configured_with: Box::leak(Box::new(builder.clone())),
+                build_executables: Box::leak(build_executables),
+            }
+        });
+
+        assert_eq!(
+            singleton.configured_with, builder,
+            "All instances of BinTest must be configured with the same values"
+        );
+
+        singleton.clone()
     }
 }
 
@@ -178,4 +227,19 @@ impl Default for BinTest {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// The following tests are mutually exclusive since we operate on a global singleton
+
+// #[test]
+// fn same_config() {
+//     let _executables1 = BinTest::with().build_workspace(true).build();
+//     let _executables2 = BinTest::with().build_workspace(true).build();
+// }
+
+#[test]
+#[should_panic(expected = "All instances of BinTest must be configured with the same values")]
+fn different_config() {
+    let _executables1 = BinTest::new();
+    let _executables2 = BinTest::with().build_workspace(true).build();
 }
