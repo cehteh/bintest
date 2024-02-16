@@ -3,13 +3,13 @@
 //! # Example
 //!
 //! In simple cases you can just call `BinTest::new()` to build all executables in the current
-//! crate and get a `BinTest` instance to work with.
+//! crate and get a reference to a `BinTest` singleton to work with.
 //!
 //! ```rust
 //! #[test]
 //! fn test() {
 //!   // BinTest::new() will run 'cargo build' and registers all build executables
-//!   let executables = BinTest::new();
+//!   let executables: &'static BinTest = BinTest::new();
 //!
 //!   // List the executables build
 //!   for (k,v) in executables.list_executables() {
@@ -21,7 +21,6 @@
 //!
 //!   // this command can then be used for testing
 //!   command.arg("help").spawn();
-//!
 //! }
 //! ```
 //!
@@ -40,9 +39,11 @@ pub use std::process::{Command, Stdio};
 pub use cargo_metadata::camino::Utf8PathBuf;
 use cargo_metadata::Message;
 
-/// Allows configuration of a workspace to find an executable in
+/// Allows configuration of a workspace to find an executable in.
+///
+/// This builder is completely const constructible.
 #[must_use]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct BinTestBuilder {
     build_workspace: bool,
     specific_executable: Option<&'static str>,
@@ -50,10 +51,10 @@ pub struct BinTestBuilder {
 }
 
 /// Access to binaries build by 'cargo build'
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct BinTest {
-    configured_with: &'static BinTestBuilder,
-    build_executables: &'static BTreeMap<String, Utf8PathBuf>,
+    configured_with: BinTestBuilder,
+    build_executables: BTreeMap<String, Utf8PathBuf>,
 }
 
 //PLANNED: needs some better way to figure out what profile is active
@@ -94,9 +95,38 @@ impl BinTestBuilder {
         Self { quiet, ..self }
     }
 
-    /// Constructs the `BinTest`, running `cargo build` with the configured options
+    /// Constructs a `BinTest` with the default configuration if not already constructed.
+    /// Construction runs 'cargo build' and register all build executables.  Executables are
+    /// identified by their name, without path and filename extension.
+    ///
+    /// # Returns
+    ///
+    /// A reference to a immutable `BinTest` singleton that can be used to access the
+    /// executables.
+    ///
+    /// # Panics
+    ///
+    /// All tests must run with the same configuration, this can be either achieved by calling
+    /// `BinTest::with()` always with the same configuration or by providing a function that
+    /// constructs and returns the `BinTest` singleton:
+    ///
+    /// ```
+    /// use bintest::{BinTest, BinTestBuilder};
+    ///
+    /// // #[cfg(test)]
+    /// fn my_bintest() -> &'static BinTest {
+    ///     // The Builder can be all const constructed
+    ///     static BINTEST_CONFIG: BinTestBuilder = BinTest::with().quiet(true);
+    ///     BINTEST_CONFIG.build()
+    /// }
+    ///
+    /// // #[test]
+    /// fn example() {
+    ///     let bintest = my_bintest();
+    /// }
+    /// ```
     #[must_use]
-    pub fn build(self) -> BinTest {
+    pub fn build(self) -> &'static BinTest {
         BinTest::new_with_builder(&self)
     }
 }
@@ -109,43 +139,27 @@ impl BinTest {
     /// ```
     /// use bintest::BinTest;
     ///
-    /// let executables: BinTest = BinTest::with().quiet(true).build();
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// All tests must run with the same configuration, this can be either achieved by calling
-    /// `BinTest::with()` always with the same configuration or by providing a function that
-    /// always returns the same builder:
-    ///
-    /// ```
-    /// use bintest::BinTest;
-    ///
-    /// #[cfg(test)]
-    /// const fn bintest_config() -> &'static BinTestBuilder {
-    ///     // The Builder can be all const constructed
-    ///     static BINTEST_CONFIG: BinTestBuilder = BinTest::with().quiet(true);
-    ///     &BINTEST_CONFIG
-    /// }
-    ///
-    /// #[test]
-    /// fn example() {
-    ///     let bintest: BinTest = bintest_config().build();
-    /// }
+    /// let executables = BinTest::with().quiet(true).build();
     /// ```
     pub const fn with() -> BinTestBuilder {
         BinTestBuilder::new()
     }
 
-    /// Runs 'cargo build' and register all build executables.
-    /// Executables are identified by their name, without path and filename extension.
+    /// Constructs a `BinTest` with the default configuration if not already constructed.
+    /// Construction runs 'cargo build' and register all build executables.  Executables are
+    /// identified by their name, without path and filename extension.
+    ///
+    /// # Returns
+    ///
+    /// A reference to a immutable `BinTest` singleton that can be used to access the
+    /// executables.
     ///
     /// # Panics
     ///
     /// All tests must run with the same configuration, when using only `BinTest::new()` this
     /// is infallible. Mixing this with differing configs from `BinTest::with()` will panic.
     #[must_use]
-    pub fn new() -> BinTest {
+    pub fn new() -> &'static Self {
         Self::new_with_builder(&BinTestBuilder::new())
     }
 
@@ -164,7 +178,7 @@ impl BinTest {
         )
     }
 
-    fn new_with_builder(builder: &BinTestBuilder) -> Self {
+    fn new_with_builder(builder: &BinTestBuilder) -> &'static Self {
         static SINGLETON: OnceLock<BinTest> = OnceLock::new();
 
         let singleton = SINGLETON.get_or_init(|| {
@@ -193,8 +207,7 @@ impl BinTest {
 
             let mut cargo_result = cargo_build.spawn().expect("'cargo build' success");
 
-            let btree_map = Box::<BTreeMap<String, Utf8PathBuf>>::default();
-            let mut build_executables = btree_map;
+            let mut build_executables = BTreeMap::<String, Utf8PathBuf>::default();
 
             let reader = std::io::BufReader::new(cargo_result.stdout.take().unwrap());
             for message in cargo_metadata::Message::parse_stream(reader) {
@@ -209,23 +222,17 @@ impl BinTest {
             }
 
             BinTest {
-                configured_with: Box::leak(Box::new(builder.clone())),
-                build_executables: Box::leak(build_executables),
+                configured_with: *builder,
+                build_executables,
             }
         });
 
         assert_eq!(
-            singleton.configured_with, builder,
+            singleton.configured_with, *builder,
             "All instances of BinTest must be configured with the same values"
         );
 
-        singleton.clone()
-    }
-}
-
-impl Default for BinTest {
-    fn default() -> Self {
-        Self::new()
+        singleton
     }
 }
 
