@@ -41,7 +41,7 @@ use cargo_metadata::Message;
 #[must_use]
 pub struct BinTestBuilder {
     build_workspace: bool,
-    specific_executable: Option<String>,
+    specific_executable: Option<&'static str>,
     quiet: bool,
 }
 
@@ -68,7 +68,7 @@ impl BinTestBuilder {
     }
 
     /// Allow building all executables in a workspace
-    pub fn build_workspace(self, workspace: bool) -> Self {
+    pub const fn build_workspace(self, workspace: bool) -> Self {
         Self {
             build_workspace: workspace,
             ..self
@@ -76,15 +76,15 @@ impl BinTestBuilder {
     }
 
     /// Allow only building a specific executable in the case of multiple in a workspace/package
-    pub fn build_executable<S: Into<String>>(self, executable: S) -> Self {
+    pub const fn build_executable(self, executable: &'static str) -> Self {
         Self {
-            specific_executable: Some(executable.into()),
+            specific_executable: Some(executable),
             ..self
         }
     }
 
     /// Allow disabling extra output from the `cargo build` run
-    pub fn quiet(self, quiet: bool) -> Self {
+    pub const fn quiet(self, quiet: bool) -> Self {
         Self { quiet, ..self }
     }
 
