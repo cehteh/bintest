@@ -231,7 +231,7 @@ impl BinTest {
 
         assert_eq!(
             singleton.configured_with, *builder,
-            "All instances of BinTest must be configured with the same values"
+            "All calls to BinTest must be configured with the same values"
         );
 
         singleton
@@ -247,7 +247,7 @@ impl BinTest {
 // }
 
 #[test]
-#[should_panic(expected = "All instances of BinTest must be configured with the same values")]
+#[should_panic(expected = "All calls to BinTest must be configured with the same values")]
 fn different_config() {
     let _executables1 = BinTest::new();
     let _executables2 = BinTest::with().build_workspace(true).build();
