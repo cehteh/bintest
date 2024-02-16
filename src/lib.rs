@@ -48,6 +48,7 @@ pub struct BinTestBuilder {
     build_workspace: bool,
     specific_executable: Option<&'static str>,
     quiet: bool,
+    release_build: bool,
 }
 
 /// Access to binaries build by 'cargo build'
@@ -71,6 +72,7 @@ impl BinTestBuilder {
             build_workspace: false,
             specific_executable: None,
             quiet: false,
+            release_build: RELEASE_BUILD,
         }
     }
 
@@ -189,7 +191,7 @@ impl BinTest {
                 .args(["build", "--message-format", "json"])
                 .stdout(Stdio::piped());
 
-            if RELEASE_BUILD {
+            if builder.release_build {
                 cargo_build.arg("--release");
             }
 
