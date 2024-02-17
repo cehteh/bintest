@@ -51,7 +51,10 @@ pub struct BinTestBuilder {
     release_build: bool,
 }
 
-/// Access to binaries build by 'cargo build'
+/// Access to binaries build by 'cargo build' Starting with version 2.0.0 this is a singleton
+/// that is constructed by the first call to `BinTest::new()` or `BinTest::with().build()`.
+/// All calls to `BinTest` must be configured with the same configuration
+/// values, otherwise a panic will occur.
 #[derive(Debug)]
 pub struct BinTest {
     configured_with: BinTestBuilder,
