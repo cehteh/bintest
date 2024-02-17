@@ -91,29 +91,34 @@ impl BinTestBuilder {
     }
 
     /// Allow building all executables in a workspace
-    pub const fn workspace(self, workspace: bool) -> Self {
-        Self { workspace, ..self }
+    pub const fn workspace(self) -> Self {
+        Self { workspace: true, ..self }
     }
 
     /// Allow disabling extra output from the `cargo build` run
-    pub const fn quiet(self, quiet: bool) -> Self {
-        Self { quiet, ..self }
+    pub const fn quiet(self) -> Self {
+        Self { quiet: true, ..self }
     }
 
-    /// Configure '--release' build flag
-    pub const fn release(self, release: bool) -> Self {
-        Self { release, ..self }
+    /// Build in release mode, this is the default for release builds
+    pub const fn release(self) -> Self {
+        Self { release: true, ..self }
     }
 
-    /// Configure '--offline' build flag
-    pub const fn offline(self, offline: bool) -> Self {
-        Self { offline, ..self }
+    /// Build in debug mode, this is the default for debug builds
+    pub const fn debug(self) -> Self {
+        Self { release: false, ..self }
     }
 
-    /// Configure '--all-targets' build flag
-    pub const fn all_targets(self, all_targets: bool) -> Self {
+    /// Build in offline mode
+    pub const fn offline(self) -> Self {
+        Self { offline: true, ..self }
+    }
+
+    /// Build all targets (--lib --bins --tests --benches --examples)
+    pub const fn all_targets(self) -> Self {
         Self {
-            all_targets,
+            all_targets: true,
             ..self
         }
     }
@@ -126,7 +131,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Configure '--profile' build profile
+    /// Select a '--profile' for building
     pub const fn profile(self, profile: &'static str) -> Self {
         Self {
             profile: Some(profile),
@@ -171,7 +176,7 @@ impl BinTestBuilder {
     /// // #[cfg(test)]
     /// fn my_bintest() -> &'static BinTest {
     ///     // The Builder can be all const constructed
-    ///     static BINTEST_CONFIG: BinTestBuilder = BinTest::with().quiet(true);
+    ///     static BINTEST_CONFIG: BinTestBuilder = BinTest::with().quiet();
     ///     BINTEST_CONFIG.build()
     /// }
     ///
@@ -194,7 +199,7 @@ impl BinTest {
     /// ```
     /// use bintest::BinTest;
     ///
-    /// let executables = BinTest::with().quiet(true).build();
+    /// let executables = BinTest::with().quiet().build();
     /// ```
     pub const fn with() -> BinTestBuilder {
         BinTestBuilder::new()
@@ -327,5 +332,5 @@ impl BinTest {
 #[should_panic(expected = "All calls to BinTest must be configured with the same values")]
 fn different_config() {
     let _executables1 = BinTest::new();
-    let _executables2 = BinTest::with().workspace(true).build();
+    let _executables2 = BinTest::with().workspace().build();
 }
