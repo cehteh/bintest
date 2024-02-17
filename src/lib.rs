@@ -125,6 +125,7 @@ impl BinTestBuilder {
 
     /// Configure '--features' list of features to build
     pub const fn features(self, features: &'static str) -> Self {
+        assert!(self.features.is_none(), "features() can only be used once");
         Self {
             features: Some(features),
             ..self
@@ -133,40 +134,25 @@ impl BinTestBuilder {
 
     /// Select a '--profile' for building
     pub const fn profile(self, profile: &'static str) -> Self {
+        assert!(self.profile.is_none(), "profile() can only be used once");
         Self {
             profile: Some(profile),
             ..self
         }
     }
 
-    /// Allow only building a specific binary in the case of multiple in a workspace/package
-    pub const fn binary(self, binary: &'static str) -> Self {
-        Self {
-            // Safety: We are creating a slice from a single static element 
-            binaries: Some(unsafe {std::slice::from_raw_parts(&binary, 1)}),
-            ..self
-        }
-    }
-
     /// Allow only building specific binaríes in the case of multiple in a workspace/package
     pub const fn binaries(self, binaries: &'static[&'static str]) -> Self {
+        assert!(self.binaries.is_none(), "binaries() can only be used once");
         Self {
             binaries: Some(binaries),
             ..self
         }
     }
 
-    /// Allow only building a specific example in the case of multiple in a workspace/package
-    pub const fn example(self, example: &'static str) -> Self {
-        Self {
-            // Safety: We are creating a slice from a single static element 
-            examples: Some(unsafe {std::slice::from_raw_parts(&example, 1)}),
-            ..self
-        }
-    }
-
     /// Allow only building specific examples in the case of multiple in a workspace/package
     pub const fn examples(self, examples: &'static [&'static str]) -> Self {
+        assert!(self.examples.is_none(), "examples() can only be used once");
         Self {
             examples: Some(examples),
             ..self
