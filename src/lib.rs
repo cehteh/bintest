@@ -53,8 +53,8 @@ pub struct BinTestBuilder {
     all_targets: bool,
     features: Option<&'static str>,
     profile: Option<&'static str>,
-    binaries: Option<&'static [&'static str]>,
-    examples: Option<&'static [&'static str]>,
+    binaries: MaybeMany<'static, &'static str>,
+    examples: MaybeMany<'static, &'static str>,
 }
 
 /// Access to binaries build by 'cargo build' Starting with version 2.0.0 this is a singleton
@@ -85,34 +85,49 @@ impl BinTestBuilder {
             all_targets: false,
             features: None,
             profile: None,
-            binaries: None,
-            examples: None,
+            binaries: MaybeMany::None,
+            examples: MaybeMany::None,
         }
     }
 
     /// Allow building all executables in a workspace
     pub const fn workspace(self) -> Self {
-        Self { workspace: true, ..self }
+        Self {
+            workspace: true,
+            ..self
+        }
     }
 
     /// Allow disabling extra output from the `cargo build` run
     pub const fn quiet(self) -> Self {
-        Self { quiet: true, ..self }
+        Self {
+            quiet: true,
+            ..self
+        }
     }
 
     /// Build in release mode, this is the default for release builds
     pub const fn release(self) -> Self {
-        Self { release: true, ..self }
+        Self {
+            release: true,
+            ..self
+        }
     }
 
     /// Build in debug mode, this is the default for debug builds
     pub const fn debug(self) -> Self {
-        Self { release: false, ..self }
+        Self {
+            release: false,
+            ..self
+        }
     }
 
     /// Build in offline mode
     pub const fn offline(self) -> Self {
-        Self { offline: true, ..self }
+        Self {
+            offline: true,
+            ..self
+        }
     }
 
     /// Build all targets (--lib --bins --tests --benches --examples)
@@ -141,11 +156,29 @@ impl BinTestBuilder {
         }
     }
 
-    /// Allow only building specific binaríes in the case of multiple in a workspace/package
-    pub const fn binaries(self, binaries: &'static[&'static str]) -> Self {
-        assert!(self.binaries.is_none(), "binaries() can only be used once");
+    /// Allow only building a specific binary in the case of multiple in a workspace/package
+    pub const fn binary(self, binary: &'static str) -> Self {
+        assert!(self.binaries.is_none(), "binary()/binaries() can only be used once");
         Self {
-            binaries: Some(binaries),
+            binaries: MaybeMany::One(binary),
+            ..self
+        }
+    }
+
+    /// Allow only building specific binaríes in the case of multiple in a workspace/package
+    pub const fn binaries(self, binaries: &'static [&'static str]) -> Self {
+        assert!(self.binaries.is_none(), "binary()/binaries() can only be used once");
+        Self {
+            binaries: MaybeMany::Many(binaries),
+            ..self
+        }
+    }
+
+    /// Allow only building a specific example in the case of multiple in a workspace/package
+    pub const fn example(self, example: &'static str) -> Self {
+        assert!(self.examples.is_none(), "example()/examples() can only be used once");
+        Self {
+            examples: MaybeMany::One(example),
             ..self
         }
     }
@@ -154,7 +187,7 @@ impl BinTestBuilder {
     pub const fn examples(self, examples: &'static [&'static str]) -> Self {
         assert!(self.examples.is_none(), "examples() can only be used once");
         Self {
-            examples: Some(examples),
+            examples: MaybeMany::Many(examples),
             ..self
         }
     }
@@ -281,15 +314,27 @@ impl BinTest {
                 cargo_build.args(["--profile", profile]);
             }
 
-            if let Some(binary) = builder.binaries {
-                for binary in binary {
+            match builder.binaries {
+                MaybeMany::None => {}
+                MaybeMany::One(binary) => {
                     cargo_build.args(["--bin", binary]);
+                }
+                MaybeMany::Many(binaries) => {
+                    for binary in binaries {
+                        cargo_build.args(["--bin", binary]);
+                    }
                 }
             }
 
-            if let Some(examples) = builder.examples {
-                for example in examples {
+            match builder.examples {
+                MaybeMany::None => {}
+                MaybeMany::One(example) => {
                     cargo_build.args(["--example", example]);
+                }
+                MaybeMany::Many(examples) => {
+                    for example in examples {
+                        cargo_build.args(["--bin", example]);
+                    }
                 }
             }
 
@@ -321,6 +366,19 @@ impl BinTest {
         );
 
         singleton
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum MaybeMany<'a, T> {
+    None,
+    One(T),
+    Many(&'a [T]),
+}
+
+impl<'a, T> MaybeMany<'a, T> {
+    const fn is_none(&self) -> bool {
+        matches!(self, Self::None)
     }
 }
 
