@@ -44,11 +44,17 @@ use cargo_metadata::Message;
 /// This builder is completely const constructible.
 #[must_use]
 #[derive(Debug, PartialEq, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BinTestBuilder {
-    build_workspace: bool,
-    specific_executable: Option<&'static str>,
+    workspace: bool,
     quiet: bool,
-    release_build: bool,
+    release: bool,
+    offline: bool,
+    all_targets: bool,
+    features: Option<&'static str>,
+    profile: Option<&'static str>,
+    binaries: Option<&'static [&'static str]>,
+    examples: Option<&'static [&'static str]>,
 }
 
 /// Access to binaries build by 'cargo build' Starting with version 2.0.0 this is a singleton
@@ -72,32 +78,76 @@ impl BinTestBuilder {
     /// Constructs a default builder that does not build workspace executables
     const fn new() -> BinTestBuilder {
         Self {
-            build_workspace: false,
-            specific_executable: None,
+            workspace: false,
             quiet: false,
-            release_build: RELEASE_BUILD,
+            release: RELEASE_BUILD,
+            offline: false,
+            all_targets: false,
+            features: None,
+            profile: None,
+            binaries: None,
+            examples: None,
         }
     }
 
     /// Allow building all executables in a workspace
-    pub const fn build_workspace(self, workspace: bool) -> Self {
-        Self {
-            build_workspace: workspace,
-            ..self
-        }
-    }
-
-    /// Allow only building a specific executable in the case of multiple in a workspace/package
-    pub const fn build_executable(self, executable: &'static str) -> Self {
-        Self {
-            specific_executable: Some(executable),
-            ..self
-        }
+    pub const fn workspace(self, workspace: bool) -> Self {
+        Self { workspace, ..self }
     }
 
     /// Allow disabling extra output from the `cargo build` run
     pub const fn quiet(self, quiet: bool) -> Self {
         Self { quiet, ..self }
+    }
+
+    /// Configure '--release' build flag
+    pub const fn release(self, release: bool) -> Self {
+        Self { release, ..self }
+    }
+
+    /// Configure '--offline' build flag
+    pub const fn offline(self, offline: bool) -> Self {
+        Self { offline, ..self }
+    }
+
+    /// Configure '--all-targets' build flag
+    pub const fn all_targets(self, all_targets: bool) -> Self {
+        Self {
+            all_targets,
+            ..self
+        }
+    }
+
+    /// Configure '--features' list of features to build
+    pub const fn features(self, features: &'static str) -> Self {
+        Self {
+            features: Some(features),
+            ..self
+        }
+    }
+
+    /// Configure '--profile' build profile
+    pub const fn profile(self, profile: &'static str) -> Self {
+        Self {
+            profile: Some(profile),
+            ..self
+        }
+    }
+
+    /// Allow only building a specific binaríes in the case of multiple in a workspace/package
+    pub const fn binaries(self, binaries: &'static[&'static str]) -> Self {
+        Self {
+            binaries: Some(binaries),
+            ..self
+        }
+    }
+
+    /// Allow only building a specific examples in the case of multiple in a workspace/package
+    pub const fn examples(self, examples: &'static [&'static str]) -> Self {
+        Self {
+            examples: Some(examples),
+            ..self
+        }
     }
 
     /// Constructs a `BinTest` with the default configuration if not already constructed.
@@ -194,20 +244,44 @@ impl BinTest {
                 .args(["build", "--message-format", "json"])
                 .stdout(Stdio::piped());
 
-            if builder.release_build {
-                cargo_build.arg("--release");
-            }
-
-            if builder.build_workspace {
+            if builder.workspace {
                 cargo_build.arg("--workspace");
-            }
-
-            if let Some(executable) = builder.specific_executable {
-                cargo_build.args(["--bin", &executable]);
             }
 
             if builder.quiet {
                 cargo_build.arg("--quiet");
+            }
+
+            if builder.release {
+                cargo_build.arg("--release");
+            }
+
+            if builder.offline {
+                cargo_build.arg("--offline");
+            }
+
+            if builder.all_targets {
+                cargo_build.arg("--all-targets");
+            }
+
+            if let Some(features) = builder.features {
+                cargo_build.args(["--features", features]);
+            }
+
+            if let Some(profile) = builder.profile {
+                cargo_build.args(["--profile", profile]);
+            }
+
+            if let Some(binary) = builder.binaries {
+                for binary in binary {
+                    cargo_build.args(["--bin", binary]);
+                }
+            }
+
+            if let Some(examples) = builder.examples {
+                for example in examples {
+                    cargo_build.args(["--example", example]);
+                }
             }
 
             let mut cargo_result = cargo_build.spawn().expect("'cargo build' success");
@@ -245,13 +319,13 @@ impl BinTest {
 
 // #[test]
 // fn same_config() {
-//     let _executables1 = BinTest::with().build_workspace(true).build();
-//     let _executables2 = BinTest::with().build_workspace(true).build();
+//     let _executables1 = BinTest::with().workspace(true).build();
+//     let _executables2 = BinTest::with().workspace(true).build();
 // }
 
 #[test]
 #[should_panic(expected = "All calls to BinTest must be configured with the same values")]
 fn different_config() {
     let _executables1 = BinTest::new();
-    let _executables2 = BinTest::with().build_workspace(true).build();
+    let _executables2 = BinTest::with().workspace(true).build();
 }
