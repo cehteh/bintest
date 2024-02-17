@@ -139,7 +139,16 @@ impl BinTestBuilder {
         }
     }
 
-    /// Allow only building a specific binaríes in the case of multiple in a workspace/package
+    /// Allow only building a specific binary in the case of multiple in a workspace/package
+    pub const fn binary(self, binary: &'static str) -> Self {
+        Self {
+            // Safety: We are creating a slice from a single static element 
+            binaries: Some(unsafe {std::slice::from_raw_parts(&binary, 1)}),
+            ..self
+        }
+    }
+
+    /// Allow only building specific binaríes in the case of multiple in a workspace/package
     pub const fn binaries(self, binaries: &'static[&'static str]) -> Self {
         Self {
             binaries: Some(binaries),
@@ -147,7 +156,16 @@ impl BinTestBuilder {
         }
     }
 
-    /// Allow only building a specific examples in the case of multiple in a workspace/package
+    /// Allow only building a specific example in the case of multiple in a workspace/package
+    pub const fn example(self, example: &'static str) -> Self {
+        Self {
+            // Safety: We are creating a slice from a single static element 
+            examples: Some(unsafe {std::slice::from_raw_parts(&example, 1)}),
+            ..self
+        }
+    }
+
+    /// Allow only building specific examples in the case of multiple in a workspace/package
     pub const fn examples(self, examples: &'static [&'static str]) -> Self {
         Self {
             examples: Some(examples),
