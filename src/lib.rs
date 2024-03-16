@@ -24,12 +24,16 @@
 //! }
 //! ```
 //!
+//! In more complex cases you can use the `BinTest::with()` to configure the build process
+//! with a `BinTestBuilder` and then call `.build()` on it to get a reference to the
+//! `BinTest` singleton.
 //!
-//! # See Also
+//! # See also
 //!
-//! The 'testcall' crate uses this to build tests and assertions on top of the commands
-//! created by bintest. The 'testpath' crate lets you run test in specially created temporary
-//! directories to provide an filesystem environment for tests.
+//! The [testcall crate](https://crates.io/crates/testcall) uses this to build tests and
+//! assertions on top of the commands created by bintest. The [testpath
+//! crate](https://crates.io/crates/testpath) crate lets you run test in specially created
+//! temporary directories to provide an filesystem environment for tests.
 use std::env::var_os as env;
 use std::ffi::OsString;
 use std::{collections::BTreeMap, sync::OnceLock};
@@ -57,10 +61,12 @@ pub struct BinTestBuilder {
     examples: MaybeMany<'static, &'static str>,
 }
 
-/// Access to binaries build by 'cargo build' Starting with version 2.0.0 this is a singleton
-/// that is constructed by the first call to `BinTest::new()` or `BinTest::with().build()`.
-/// All calls to `BinTest` must be configured with the same configuration
-/// values, otherwise a panic will occur.
+/// Access to binaries build by **`cargo build`**. Starting with version 2.0.0 this is a
+/// singleton that is constructed by the first call to `BinTest::new()` or
+/// `BinTest::with().build()`.  All calls to `BinTest` must be configured with the same
+/// configuration values, otherwise a panic will occur. This is made in anticipation of future
+/// versions which will allow building binary artifacts with different configurations while
+/// not panicking then.
 #[derive(Debug)]
 pub struct BinTest {
     configured_with: BinTestBuilder,
@@ -75,7 +81,7 @@ const RELEASE_BUILD: bool = true;
 const RELEASE_BUILD: bool = false;
 
 impl BinTestBuilder {
-    /// Constructs a default builder that does not build workspace executables
+    /// Constructs a default builder with no configuration options set.
     const fn new() -> BinTestBuilder {
         Self {
             workspace: false,
@@ -90,7 +96,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Allow building all executables in a workspace
+    /// Build all executables in all workspaces.
     pub const fn workspace(self) -> Self {
         Self {
             workspace: true,
@@ -98,7 +104,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Allow disabling extra output from the `cargo build` run
+    /// Disables extra output from the `cargo build` run.
     pub const fn quiet(self) -> Self {
         Self {
             quiet: true,
@@ -106,7 +112,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Build in release mode, this is the default for release builds
+    /// Build in release mode, this is the default for release builds.
     pub const fn release(self) -> Self {
         Self {
             release: true,
@@ -114,7 +120,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Build in debug mode, this is the default for debug builds
+    /// Build in debug mode, this is the default for debug builds.
     pub const fn debug(self) -> Self {
         Self {
             release: false,
@@ -122,7 +128,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Build in offline mode
+    /// Build in offline mode.
     pub const fn offline(self) -> Self {
         Self {
             offline: true,
@@ -130,7 +136,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Build all targets (--lib --bins --tests --benches --examples)
+    /// Build all targets (--lib --bins --tests --benches --examples).
     pub const fn all_targets(self) -> Self {
         Self {
             all_targets: true,
@@ -138,7 +144,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Configure '--features' list of features to build
+    /// Configure '--features' list of features to build.
     pub const fn features(self, features: &'static str) -> Self {
         assert!(self.features.is_none(), "features() can only be used once");
         Self {
@@ -147,7 +153,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Select a '--profile' for building
+    /// Select a '--profile' for building.
     pub const fn profile(self, profile: &'static str) -> Self {
         assert!(self.profile.is_none(), "profile() can only be used once");
         Self {
@@ -156,34 +162,43 @@ impl BinTestBuilder {
         }
     }
 
-    /// Allow only building a specific binary in the case of multiple in a workspace/package
+    /// Allow only building a specific binary in the case of multiple in a workspace/package.
     pub const fn binary(self, binary: &'static str) -> Self {
-        assert!(self.binaries.is_none(), "binary()/binaries() can only be used once");
+        assert!(
+            self.binaries.is_none(),
+            "binary()/binaries() can only be used once"
+        );
         Self {
             binaries: MaybeMany::One(binary),
             ..self
         }
     }
 
-    /// Allow only building specific binaríes in the case of multiple in a workspace/package
+    /// Allow only building specific binaríes in the case of multiple in a workspace/package.
     pub const fn binaries(self, binaries: &'static [&'static str]) -> Self {
-        assert!(self.binaries.is_none(), "binary()/binaries() can only be used once");
+        assert!(
+            self.binaries.is_none(),
+            "binary()/binaries() can only be used once"
+        );
         Self {
             binaries: MaybeMany::Many(binaries),
             ..self
         }
     }
 
-    /// Allow only building a specific example in the case of multiple in a workspace/package
+    /// Allow only building a specific example in the case of multiple in a workspace/package.
     pub const fn example(self, example: &'static str) -> Self {
-        assert!(self.examples.is_none(), "example()/examples() can only be used once");
+        assert!(
+            self.examples.is_none(),
+            "example()/examples() can only be used once"
+        );
         Self {
             examples: MaybeMany::One(example),
             ..self
         }
     }
 
-    /// Allow only building specific examples in the case of multiple in a workspace/package
+    /// Allow only building specific examples in the case of multiple in a workspace/package.
     pub const fn examples(self, examples: &'static [&'static str]) -> Self {
         assert!(self.examples.is_none(), "examples() can only be used once");
         Self {
@@ -192,7 +207,7 @@ impl BinTestBuilder {
         }
     }
 
-    /// Constructs a `BinTest` with the default configuration if not already constructed.
+    /// Constructs a `BinTest` with from this builder if not already constructed.
     /// Construction runs 'cargo build' and register all build executables.  Executables are
     /// identified by their name, without path and filename extension.
     ///
@@ -229,19 +244,6 @@ impl BinTestBuilder {
 }
 
 impl BinTest {
-    /// Creates a `BinTestBuilder` for further customization.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use bintest::BinTest;
-    ///
-    /// let executables = BinTest::with().quiet().build();
-    /// ```
-    pub const fn with() -> BinTestBuilder {
-        BinTestBuilder::new()
-    }
-
     /// Constructs a `BinTest` with the default configuration if not already constructed.
     /// Construction runs 'cargo build' and register all build executables.  Executables are
     /// identified by their name, without path and filename extension.
@@ -255,17 +257,51 @@ impl BinTest {
     ///
     /// All tests must run with the same configuration, when using only `BinTest::new()` this
     /// is infallible. Mixing this with differing configs from `BinTest::with()` will panic.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bintest::BinTest;
+    ///
+    /// let executables = BinTest::new();
+    /// ```
     #[must_use]
     pub fn new() -> &'static Self {
         Self::new_with_builder(&BinTestBuilder::new())
     }
 
-    /// Gives an `(name, path)` iterator over all executables found
+    /// Creates a `BinTestBuilder` for further customization.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bintest::BinTest;
+    ///
+    /// let executables = BinTest::with().quiet().build();
+    /// ```
+    pub const fn with() -> BinTestBuilder {
+        BinTestBuilder::new()
+    }
+
+    /// Gives an `(name, path)` iterator over all executables found.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bintest::BinTest;
+    ///
+    /// let executables = BinTest::new();
+    ///
+    /// for (name, path) in executables.list_executables() {
+    ///     println!("{} @ {}", name, path);
+    /// }
+    /// ```
+    #[must_use]
     pub fn list_executables(&self) -> std::collections::btree_map::Iter<'_, String, Utf8PathBuf> {
         self.build_executables.iter()
     }
 
-    /// Constructs a `std::process::Command` for the given executable name
+    /// Constructs a [`std::process::Command`] for the given executable name
     #[must_use]
     pub fn command(&self, name: &str) -> Command {
         Command::new(
@@ -369,6 +405,7 @@ impl BinTest {
     }
 }
 
+/// Const constructible helper holding `None, T, &[T]`.
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum MaybeMany<'a, T> {
     None,
